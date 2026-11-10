@@ -10,15 +10,15 @@ export interface ThemeOption {
 }
 
 export const THEMES: ThemeOption[] = [
-  { id: 'night', label: '夜幕蓝' },
-  { id: 'sunrise', label: '晨曦暖阳' },
-  { id: 'mint', label: '薄荷清新' },
-  { id: 'sakura', label: '樱花粉' },
-  { id: 'paper', label: '纸墨米' },
+  { id: 'paper', label: '纸白' },
+  { id: 'night', label: '石墨' },
+  { id: 'sunrise', label: '暖沙' },
+  { id: 'mint', label: '薄荷' },
+  { id: 'sakura', label: '浅樱' },
 ]
 
 function normalizeTheme(value: string | null): ThemeId {
-  return THEMES.some((item) => item.id === value) ? (value as ThemeId) : 'night'
+  return THEMES.some((item) => item.id === value) ? (value as ThemeId) : 'paper'
 }
 
 interface UiState {

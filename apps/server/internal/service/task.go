@@ -2,7 +2,11 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"todo/server/internal/domain"
@@ -11,18 +15,61 @@ import (
 )
 
 type CreateTaskInput struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Priority    string `json:"priority"`
+	Title       string           `json:"title"`
+	Description string           `json:"description"`
+	Notes       string           `json:"notes"`
+	Subtasks    []domain.Subtask `json:"subtasks"`
+	Status      string           `json:"status"`
+	Priority    string           `json:"priority"`
 }
 
 type UpdateTaskPatch struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
-	Status      *string `json:"status"`
-	Priority    *string `json:"priority"`
-	Pinned      *bool   `json:"pinned"`
+	Title       *string           `json:"title"`
+	Description *string           `json:"description"`
+	Notes       *string           `json:"notes"`
+	Subtasks    *[]domain.Subtask `json:"subtasks"`
+	Status      *string           `json:"status"`
+	Priority    *string           `json:"priority"`
+	Pinned      *bool             `json:"pinned"`
+	Archived    *bool             `json:"archived"`
+}
+
+const (
+	maxNotesRunes   = 20000
+	maxSubtasks     = 100
+	maxSubtaskRunes = 200
+)
+
+func normalizeSubtasks(items []domain.Subtask) ([]domain.Subtask, error) {
+	if len(items) > maxSubtasks {
+		return nil, errs.BadRequest("子任务过多")
+	}
+	normalized := make([]domain.Subtask, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			continue
+		}
+		if utf8.RuneCountInString(title) > maxSubtaskRunes {
+			return nil, errs.BadRequest("子任务标题过长")
+		}
+		id := strings.TrimSpace(item.ID)
+		if id == "" || seen[id] {
+			id = newSubtaskID()
+		}
+		seen[id] = true
+		normalized = append(normalized, domain.Subtask{ID: id, Title: title, Done: item.Done})
+	}
+	return normalized, nil
+}
+
+func newSubtaskID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(buf)
 }
 
 type TaskService struct {
@@ -67,13 +114,27 @@ func (s *TaskService) Create(ctx context.Context, userID uint, input CreateTaskI
 	if found {
 		position = max + 1
 	}
+	notes := strings.TrimSpace(input.Notes)
+	if utf8.RuneCountInString(notes) > maxNotesRunes {
+		return nil, errs.BadRequest("备注过长")
+	}
+	subtasks, err := normalizeSubtasks(input.Subtasks)
+	if err != nil {
+		return nil, err
+	}
 	task := &domain.Task{
 		UserID:      userID,
 		Title:       title,
 		Description: strings.TrimSpace(input.Description),
+		Notes:       notes,
+		Subtasks:    domain.Subtasks(subtasks),
 		Status:      status,
 		Priority:    priority,
 		Position:    position,
+	}
+	if status == "done" {
+		now := time.Now()
+		task.CompletedAt = &now
 	}
 	if err := s.tasks.Create(ctx, task); err != nil {
 		return nil, err
@@ -101,6 +162,20 @@ func (s *TaskService) Update(ctx context.Context, userID, taskID uint, patch Upd
 	if patch.Description != nil {
 		updates["description"] = strings.TrimSpace(*patch.Description)
 	}
+	if patch.Notes != nil {
+		notes := strings.TrimSpace(*patch.Notes)
+		if utf8.RuneCountInString(notes) > maxNotesRunes {
+			return nil, errs.BadRequest("备注过长")
+		}
+		updates["notes"] = notes
+	}
+	if patch.Subtasks != nil {
+		subtasks, err := normalizeSubtasks(*patch.Subtasks)
+		if err != nil {
+			return nil, err
+		}
+		updates["subtasks"] = domain.Subtasks(subtasks)
+	}
 	status := task.Status
 	if patch.Status != nil {
 		if !domain.ValidStatus(*patch.Status) {
@@ -108,6 +183,11 @@ func (s *TaskService) Update(ctx context.Context, userID, taskID uint, patch Upd
 		}
 		status = *patch.Status
 		updates["status"] = status
+		if status == "done" && task.Status != "done" {
+			updates["completed_at"] = time.Now()
+		} else if status != "done" && task.Status == "done" {
+			updates["completed_at"] = nil
+		}
 	}
 	if patch.Priority != nil {
 		if !domain.ValidPriority(*patch.Priority) {
@@ -127,6 +207,18 @@ func (s *TaskService) Update(ctx context.Context, userID, taskID uint, patch Upd
 				position = min - 1
 			}
 			updates["position"] = position
+		}
+	}
+	if patch.Archived != nil {
+		if *patch.Archived {
+			if status != "done" {
+				return nil, errs.BadRequest("只有已完成的任务可以归档")
+			}
+			if task.ArchivedAt == nil {
+				updates["archived_at"] = time.Now()
+			}
+		} else {
+			updates["archived_at"] = nil
 		}
 	}
 

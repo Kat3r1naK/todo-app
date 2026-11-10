@@ -60,6 +60,10 @@ func NewDB(cfg *config.Config) (*gorm.DB, func(), error) {
 	if err := db.AutoMigrate(&domain.User{}, &domain.Task{}, &domain.Note{}); err != nil {
 		return nil, nil, fmt.Errorf("数据表迁移失败: %w", err)
 	}
+	// 存量已完成任务没有完成时间,用最后更新时间回填,让历史统计有据可依
+	if err := db.Exec("UPDATE tasks SET completed_at = updated_at WHERE status = 'done' AND completed_at IS NULL").Error; err != nil {
+		return nil, nil, fmt.Errorf("回填完成时间失败: %w", err)
+	}
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, nil, err

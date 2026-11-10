@@ -1,20 +1,31 @@
 <template>
   <div class="login-page">
-    <div class="glow glow-a" />
-    <div class="glow glow-b" />
-    <div class="login-card">
+    <header class="login-header">
       <div class="brand">
         <div class="brand-logo">
-          <el-icon :size="26"><Checked /></el-icon>
+          <el-icon :size="20"><Check /></el-icon>
         </div>
-        <div>
-          <h1>待办面板</h1>
-          <p>VUE 3 · GIN · MYSQL</p>
-        </div>
+        <span>待办面板</span>
+      </div>
+      <el-dropdown trigger="click" @command="(theme) => ui.apply(String(theme))">
+        <el-button text :icon="Brush" aria-label="切换主题" title="切换主题" />
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="theme in THEMES" :key="theme.id" :command="theme.id" :disabled="ui.theme === theme.id">
+              {{ theme.label }}
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </header>
+    <main class="login-card">
+      <div class="login-heading">
+        <h1>登录</h1>
+        <p>使用管理员分配的账号访问看板。</p>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large" @submit.prevent="submit">
         <el-form-item label="账号" prop="username">
-          <el-input v-model="form.username" placeholder="请输入账号" :prefix-icon="User" autocomplete="username" />
+          <el-input v-model="form.username" placeholder="请输入账号" autocomplete="username" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input
@@ -22,17 +33,15 @@
             type="password"
             show-password
             placeholder="请输入密码"
-            :prefix-icon="Lock"
             autocomplete="current-password"
-            @keyup.enter="submit"
           />
         </el-form-item>
         <el-button class="login-btn" type="primary" native-type="submit" :loading="loading || autoLoading">
-          登 录
+          {{ autoLoading ? '正在登录…' : '登录' }}
         </el-button>
       </el-form>
-      <p class="tip">默认管理员 admin / admin，登录后可在账号管理中修改密码</p>
-    </div>
+      <p class="tip">忘记密码请联系管理员重置。</p>
+    </main>
   </div>
 </template>
 
@@ -41,12 +50,14 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Checked, Lock, User } from '@element-plus/icons-vue'
+import { Brush, Check } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
+import { THEMES, useUiStore } from '../stores/ui'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const ui = useUiStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -95,93 +106,92 @@ async function submit(): Promise<void> {
 
 <style scoped>
 .login-page {
-  position: relative;
-  min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: 24px;
-  overflow: hidden;
-  background: var(--bg-glow), var(--bg);
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+  min-height: 100svh;
+  background: var(--bg);
 }
 
-.glow {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(110px);
-  opacity: 0.35;
-  pointer-events: none;
-}
-
-.glow-a {
-  width: 480px;
-  height: 480px;
-  left: -120px;
-  top: -140px;
-  background: var(--el-color-primary);
-}
-
-.glow-b {
-  width: 420px;
-  height: 420px;
-  right: -100px;
-  bottom: -120px;
-  background: var(--col-doing);
-  opacity: 0.22;
-}
-
-.login-card {
-  position: relative;
-  z-index: 1;
-  width: min(400px, 100%);
-  padding: 34px 32px 26px;
-  border-radius: 22px;
-  border: 1px solid var(--border);
-  background: var(--login-card-bg);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(16px);
+.login-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 32px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 13px;
-  margin-bottom: 28px;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .brand-logo {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, var(--el-color-primary), var(--col-doing));
-  box-shadow: 0 8px 20px rgba(74, 158, 255, 0.32);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--card);
 }
 
-.brand h1 {
+.login-card {
+  align-self: center;
+  width: min(340px, calc(100% - 48px));
+  margin: 24px auto 72px;
+}
+
+.login-heading {
+  margin-bottom: 28px;
+}
+
+.login-heading h1 {
   margin: 0;
-  font-size: 21px;
-  letter-spacing: 0.5px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-.brand p {
-  margin: 4px 0 0;
-  font-size: 10px;
-  letter-spacing: 2.5px;
+.login-heading p {
+  margin: 8px 0 0;
   color: var(--muted);
+  font-size: 13px;
+}
+
+.login-card :deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+.login-card :deep(.el-input__wrapper) {
+  min-height: 42px;
+  padding-right: 13px;
+  padding-left: 13px;
 }
 
 .login-btn {
   width: 100%;
-  margin-top: 6px;
+  height: 42px;
+  margin-top: 8px;
 }
 
 .tip {
-  margin: 18px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
+  margin: 20px 0 0;
   color: var(--muted);
-  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (max-width: 640px) {
+  .login-header {
+    padding: 16px 20px;
+  }
+
+  .login-heading h1 {
+    font-size: 22px;
+  }
 }
 </style>

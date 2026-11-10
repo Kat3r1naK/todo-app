@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -95,9 +96,15 @@ func (d *TaskDAO) Reorder(ctx context.Context, userID uint, columns map[string][
 	}
 	for status, ids := range columns {
 		for position, id := range ids {
+			updates := map[string]any{"status": status, "position": position}
+			if status == "done" {
+				updates["completed_at"] = gorm.Expr("COALESCE(completed_at, ?)", time.Now())
+			} else {
+				updates["completed_at"] = nil
+			}
 			if err := tx.Model(&domain.Task{}).
 				Where("id = ? AND user_id = ?", id, userID).
-				Updates(map[string]any{"status": status, "position": position}).Error; err != nil {
+				Updates(updates).Error; err != nil {
 				tx.Rollback()
 				return err
 			}

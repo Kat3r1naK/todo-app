@@ -15,6 +15,8 @@
               :key="item"
               class="swatch"
               :class="[item, { active: color === item }]"
+              :aria-label="`${COLOR_LABELS[item]}便签`"
+              :aria-pressed="color === item"
               @click="color = item"
             />
           </div>
@@ -36,17 +38,17 @@
             <div class="note-foot">
               <span>{{ formatTime(note.updated_at) }}</span>
               <span class="note-actions">
-                <button class="icon-btn" @click="startEdit(note)">
+                <button class="icon-btn" aria-label="编辑便签" title="编辑便签" @click="startEdit(note)">
                   <el-icon :size="13"><EditPen /></el-icon>
                 </button>
-                <button class="icon-btn danger" @click="removeNote(note)">
+                <button class="icon-btn danger" aria-label="删除便签" title="删除便签" @click="removeNote(note)">
                   <el-icon :size="13"><Delete /></el-icon>
                 </button>
               </span>
             </div>
           </template>
         </div>
-        <el-empty v-if="store.notes.length === 0" description="还没有便签" :image-size="70" />
+        <p v-if="store.notes.length === 0" class="notes-empty">还没有便签，随手记下想到的事。</p>
       </div>
     </div>
   </el-drawer>
@@ -64,6 +66,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 
 const store = useBoardStore()
 const COLORS: NoteColor[] = ['yellow', 'green', 'blue', 'pink', 'purple']
+const COLOR_LABELS: Record<NoteColor, string> = { yellow: '黄色', green: '绿色', blue: '蓝色', pink: '粉色', purple: '紫色' }
 
 const draft = ref('')
 const color = ref<NoteColor>('yellow')
@@ -160,20 +163,22 @@ function formatTime(value: string): string {
 }
 
 .swatch {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border: 2px solid transparent;
-  border-radius: 50%;
+  border-radius: 5px;
   cursor: pointer;
-  transition: transform 0.12s ease;
+  background-clip: padding-box;
 }
 
 .swatch:hover {
-  transform: scale(1.12);
+  outline: 1px solid var(--border-strong);
+  outline-offset: 2px;
 }
 
 .swatch.active {
-  border-color: var(--text);
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .swatch.yellow {
@@ -204,30 +209,30 @@ function formatTime(value: string): string {
 }
 
 .note {
-  padding: 12px;
+  padding: 16px;
+  border: 1px solid rgb(60 50 38 / 8%);
   border-radius: var(--radius-md);
   color: #3c3226;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
 }
 
 .note-yellow {
-  background: #f8e9b0;
+  background: #f4edcf;
 }
 
 .note-green {
-  background: #d9efd4;
+  background: #e5eddf;
 }
 
 .note-blue {
-  background: #d7e9fb;
+  background: #e1eaf1;
 }
 
 .note-pink {
-  background: #fadde5;
+  background: #f2e3e6;
 }
 
 .note-purple {
-  background: #e8ddf8;
+  background: #ebe5f1;
 }
 
 .note-content {
@@ -259,6 +264,13 @@ function formatTime(value: string): string {
 .note-actions {
   display: flex;
   gap: 4px;
+}
+
+.notes-empty {
+  margin: 28px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .note :deep(.el-textarea__inner) {

@@ -3,21 +3,39 @@
     <header class="topbar">
       <div class="brand">
         <div class="logo">
-          <el-icon :size="22"><Checked /></el-icon>
+          <el-icon :size="20"><Check /></el-icon>
         </div>
         <div class="brand-text">
           <h1>待办面板</h1>
-          <p>VUE · GIN · MYSQL</p>
         </div>
       </div>
 
       <div class="top-actions">
-        <el-input v-model="search" class="search" placeholder="搜索任务" clearable :prefix-icon="Search" />
         <el-badge :value="board.notes.length" :hidden="board.notes.length === 0" :offset="[-2, 4]">
-          <el-button circle :icon="Notebook" @click="notesVisible = true" />
+          <el-button class="toolbar-button" text :icon="Notebook" @click="notesVisible = true">
+            <span class="btn-label">便签</span>
+          </el-button>
+        </el-badge>
+        <el-button
+          class="toolbar-button"
+          text
+          :icon="TrendCharts"
+          aria-label="每日统计"
+          title="每日统计"
+          @click="statsVisible = true"
+        />
+        <el-badge :value="board.archived.length" :hidden="board.archived.length === 0" :offset="[-2, 4]">
+          <el-button
+            class="toolbar-button"
+            text
+            :icon="Box"
+            aria-label="归档"
+            title="归档"
+            @click="archiveVisible = true"
+          />
         </el-badge>
         <el-dropdown trigger="click" @command="setTheme">
-          <el-button circle :icon="Brush" />
+          <el-button class="toolbar-button" text :icon="Brush" aria-label="切换主题" title="切换主题" />
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item
@@ -26,17 +44,19 @@
                 :command="theme.id"
                 :disabled="ui.theme === theme.id"
               >
+                <span class="theme-swatch" :class="`theme-${theme.id}`" />
                 {{ theme.label }}
+                <el-icon v-if="ui.theme === theme.id" class="theme-check"><Check /></el-icon>
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
         <el-dropdown trigger="click" @command="handleUserCommand">
-          <div class="user-chip">
-            <el-avatar :size="28" class="avatar">{{ avatarText }}</el-avatar>
+          <button class="user-chip" type="button" aria-label="账号菜单">
+            <el-avatar :size="26" shape="square" class="avatar">{{ avatarText }}</el-avatar>
             <span class="username">{{ auth.user?.username }}</span>
             <el-icon :size="12"><ArrowDown /></el-icon>
-          </div>
+          </button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item v-if="auth.isAdmin" command="admin">账号管理</el-dropdown-item>
@@ -50,22 +70,37 @@
     <main class="board-wrap">
       <div class="board-head">
         <div>
-          <h2>{{ greeting }}，{{ auth.user?.username || '朋友' }}</h2>
-          <p class="sub">{{ todayText }} · 共 {{ board.total }} 个任务，已完成 {{ board.counts.done }} 个</p>
+          <p class="board-date">{{ todayText }}</p>
+          <h2>我的看板</h2>
+          <p class="sub">{{ board.counts.todo }} 个待办，{{ board.counts.doing }} 个进行中</p>
         </div>
-        <div class="progress-box">
-          <div class="progress-label">
-            <span>完成进度</span>
-            <span>{{ percent }}%</span>
-          </div>
-          <el-progress :percentage="percent" :stroke-width="8" :show-text="false" />
-        </div>
+        <el-button class="create-task" type="primary" :icon="Plus" @click="openCreate('todo')">新建任务</el-button>
+      </div>
+
+      <div class="board-toolbar">
+        <div class="board-view"><span>全部任务</span><span class="total">{{ board.total }}</span></div>
+        <el-input v-model="search" class="search" placeholder="搜索任务…" aria-label="搜索任务" clearable :prefix-icon="Search" />
+      </div>
+
+      <div class="mobile-tabs" role="tablist" aria-label="任务状态切换">
+        <button
+          v-for="column in COLUMNS"
+          :key="column.id"
+          type="button"
+          role="tab"
+          :aria-selected="activeMobileColumn === column.id"
+          :class="{ active: activeMobileColumn === column.id }"
+          @click="activeMobileColumn = column.id"
+        >
+          {{ column.label }}<span class="tab-count">{{ board.counts[column.id] }}</span>
+        </button>
       </div>
 
       <div v-loading="board.loading" class="board">
         <KanbanColumn
           v-for="column in COLUMNS"
           :key="column.id"
+          :class="{ 'mobile-active': activeMobileColumn === column.id }"
           :column="column"
           :tasks="columnTasks(column.id)"
           :disabled="!!keyword"
@@ -73,9 +108,22 @@
           @edit="openEdit"
           @delete="handleDelete"
           @pin="handlePin"
+          @toggle="handleToggle"
+          @archive="handleArchive"
+          @toggle-subtask="handleToggleSubtask"
+          @add-subtask="handleAddSubtask"
           @dragend="handleDragEnd"
         />
       </div>
+
+      <footer class="board-footer">
+        <span class="drag-hint">{{ keyword ? '搜索时暂不可拖动任务' : '拖动卡片，调整任务的顺序和状态' }}</span>
+        <div class="progress-box">
+          <span>已完成 {{ board.counts.done }} / {{ board.total }}</span>
+          <el-progress :percentage="percent" :stroke-width="3" :show-text="false" />
+          <span class="progress-percent">{{ percent }}%</span>
+        </div>
+      </footer>
     </main>
 
     <TaskDialog
@@ -86,6 +134,8 @@
       @submit="handleSubmit"
     />
     <NotesDrawer v-model="notesVisible" />
+    <StatsDrawer v-model="statsVisible" />
+    <ArchiveDrawer v-model="archiveVisible" />
     <AdminDialog v-model="adminVisible" />
   </div>
 </template>
@@ -94,10 +144,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, Brush, Checked, Notebook, Search } from '@element-plus/icons-vue'
+import { ArrowDown, Box, Brush, Check, Notebook, Plus, Search, TrendCharts } from '@element-plus/icons-vue'
 import AdminDialog from '../components/AdminDialog.vue'
+import ArchiveDrawer from '../components/ArchiveDrawer.vue'
 import KanbanColumn from '../components/KanbanColumn.vue'
 import NotesDrawer from '../components/NotesDrawer.vue'
+import StatsDrawer from '../components/StatsDrawer.vue'
 import TaskDialog from '../components/TaskDialog.vue'
 import { COLUMNS, useBoardStore } from '../stores/board'
 import { useAuthStore } from '../stores/auth'
@@ -111,7 +163,10 @@ const ui = useUiStore()
 
 const search = ref('')
 const notesVisible = ref(false)
+const statsVisible = ref(false)
+const archiveVisible = ref(false)
 const adminVisible = ref(false)
+const activeMobileColumn = ref<TaskStatus>('todo')
 const dialogVisible = ref(false)
 const editingTask = ref<Task | null>(null)
 const defaultStatus = ref<TaskStatus>('todo')
@@ -121,22 +176,8 @@ const keyword = computed(() => search.value.trim().toLowerCase())
 const percent = computed(() => (board.total ? Math.round((board.counts.done / board.total) * 100) : 0))
 const avatarText = computed(() => (auth.user?.username || '?').slice(0, 1).toUpperCase())
 
-const greeting = computed(() => {
-  const hour = new Date().getHours()
-  if (hour < 5) return '夜深了'
-  if (hour < 11) return '早上好'
-  if (hour < 14) return '中午好'
-  if (hour < 18) return '下午好'
-  if (hour < 22) return '晚上好'
-  return '夜深了'
-})
-
-const todayText: string = new Date().toLocaleDateString('zh-CN', {
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-  weekday: 'long',
-})
+const now = new Date()
+const todayText = `${now.getMonth() + 1} 月 ${now.getDate()} 日 · ${now.toLocaleDateString('zh-CN', { weekday: 'long' })}`
 
 onMounted(async () => {
   if (!auth.user) {
@@ -217,6 +258,39 @@ async function handlePin(task: Task): Promise<void> {
   }
 }
 
+async function handleToggle(task: Task): Promise<void> {
+  try {
+    await board.toggleDone(task)
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function handleToggleSubtask(task: Task, subtaskId: string): Promise<void> {
+  try {
+    await board.toggleSubtask(task, subtaskId)
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function handleAddSubtask(task: Task, title: string): Promise<void> {
+  try {
+    await board.addSubtask(task, title)
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function handleArchive(task: Task): Promise<void> {
+  try {
+    await board.archiveTask(task)
+    ElMessage.success('已归档，可在顶栏归档中查看')
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
 async function handleDragEnd(): Promise<void> {
   try {
     await board.persistOrder()
@@ -247,7 +321,7 @@ function handleUserCommand(command: string | number | object): void {
 <style scoped>
 .app-shell {
   min-height: 100vh;
-  background: var(--bg-glow), var(--bg);
+  background: var(--bg);
 }
 
 .topbar {
@@ -258,160 +332,352 @@ function handleUserCommand(command: string | number | object): void {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 28px;
+  min-height: 60px;
+  padding: 0 32px;
   border-bottom: 1px solid var(--border);
-  background: var(--topbar-bg);
-  backdrop-filter: blur(16px);
+  background: var(--card);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, var(--el-color-primary), var(--col-doing));
-  box-shadow: 0 6px 16px rgba(74, 158, 255, 0.3);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--card);
 }
 
 .brand-text h1 {
   margin: 0;
-  font-size: 18px;
-  letter-spacing: 0.5px;
-}
-
-.brand-text p {
-  margin: 3px 0 0;
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.search {
-  width: 210px;
+.toolbar-button {
+  height: 34px;
+  padding: 8px;
+  color: var(--muted);
 }
 
 .user-chip {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 10px 4px 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel);
+  max-width: 220px;
+  margin-left: 2px;
+  padding: 0 0 0 16px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
-  outline: none;
 }
 
 .avatar {
-  background: var(--el-color-primary);
-  color: #fff;
-  font-size: 13px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .username {
-  font-size: 13px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
 }
 
 .board-wrap {
-  max-width: 1440px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 26px 28px 52px;
+  padding: 40px 48px 32px;
 }
 
 .board-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
+.board-date {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .board-head h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-.board-head .sub {
-  margin: 7px 0 0;
+.sub {
+  margin: 6px 0 0;
+  color: var(--muted);
   font-size: 13px;
-  color: var(--muted);
 }
 
-.progress-box {
-  width: 230px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.create-task {
+  height: 34px;
+  padding: 0 14px;
 }
 
-.progress-label {
+.board-toolbar {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  gap: 20px;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-view {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.total {
   color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.search {
+  width: 240px;
+}
+
+.search :deep(.el-input__wrapper) {
+  min-height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+.search :deep(.el-input__wrapper.is-focus) {
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 16px;
-  align-items: start;
+}
+
+.mobile-tabs {
+  display: none;
+}
+
+.board-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.progress-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.progress-box .el-progress {
+  width: 80px;
+}
+
+.progress-percent {
+  min-width: 28px;
+  text-align: right;
+}
+
+.theme-swatch {
+  width: 12px;
+  height: 12px;
+  margin-right: 10px;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 3px;
+}
+
+.theme-paper { background: #e9ece5; }
+.theme-night { background: #343c34; }
+.theme-sunrise { background: #e8d7bd; }
+.theme-mint { background: #c4dacb; }
+.theme-sakura { background: #e6c9d5; }
+
+.theme-check {
+  margin-left: 20px;
 }
 
 @media (max-width: 1000px) {
   .topbar {
-    padding: 12px 16px;
-  }
-
-  .search {
-    width: 150px;
+    padding: 0 24px;
   }
 
   .board-wrap {
-    padding: 18px 16px 40px;
+    padding: 36px 24px;
   }
 
   .board {
-    grid-auto-flow: column;
-    grid-template-columns: none;
-    grid-auto-columns: minmax(280px, 86vw);
-    overflow-x: auto;
-    padding-bottom: 12px;
+    gap: 14px;
   }
 }
 
-@media (max-width: 640px) {
-  .username,
-  .search {
+@media (max-width: 760px) {
+  .topbar {
+    min-height: 60px;
+    padding: 0 20px;
+  }
+
+  .top-actions {
+    gap: 8px;
+  }
+
+  .username {
     display: none;
   }
 
-  .brand-text p {
-    display: none;
+  .user-chip {
+    gap: 6px;
+    padding-left: 12px;
+  }
+
+  .board-wrap {
+    padding: 28px 20px;
+  }
+
+  .board-head {
+    gap: 12px;
+    margin-bottom: 24px;
   }
 
   .board-head h2 {
-    font-size: 19px;
+    font-size: 22px;
+  }
+
+  .board-toolbar {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .search {
+    width: min(190px, 56vw);
+  }
+
+  .mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    padding: 3px;
+    margin-bottom: 14px;
+    border-radius: var(--radius-md);
+    background: var(--panel);
+  }
+
+  .mobile-tabs button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .mobile-tabs button.active {
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgb(20 26 21 / 6%);
+  }
+
+  .tab-count {
+    color: var(--muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .board {
+    display: block;
+  }
+
+  .board :deep(.kanban-col) {
+    display: none;
+  }
+
+  .board :deep(.kanban-col.mobile-active) {
+    display: flex;
+  }
+
+  .board-footer {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 12px;
   }
 
   .progress-box {
-    width: 100%;
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .btn-label {
+    display: none;
+  }
+
+  .top-actions {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 360px) {
+  .topbar {
+    padding: 0 14px;
+  }
+
+  .brand {
+    gap: 7px;
+  }
+
+  .brand-text h1 {
+    font-size: 14px;
+  }
+
+  .top-actions {
+    gap: 4px;
   }
 }
 </style>
