@@ -2,6 +2,8 @@ node_modules/
 dist/
 .env
 .env.prod
+.env.deploy
 *.log
 .DS_Store
 apps/server/tmp/
+.agent-home/

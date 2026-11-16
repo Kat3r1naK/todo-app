@@ -21,7 +21,7 @@
 | 前端 | Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router + vuedraggable |
 | 后端 | Go + Gin + GORM + Wire |
 | 存储 | MySQL 8 + Redis 7 |
-| 部署 | Docker Compose(开发 Vite HMR + air 热重载 / 生产 nginx + 多阶段镜像) |
+| 部署 | Docker Compose(开发 Vite HMR + air 热重载 / 生产:本地多阶段构建 + SSH 分发) |
 
 ## 目录结构
 
@@ -44,9 +44,11 @@ todo-app/
 │           ├── stores/          # Pinia
 │           ├── views/           # 登录 / 看板
 │           └── types.ts         # 领域与接口类型
+├── scripts/prod.sh             # 本地构建 + SSH 上传部署
 ├── docker-compose.yml          # 开发环境
-├── docker-compose.prod.yml     # 生产环境
+├── docker-compose.prod.yml     # 生产环境(引用本地构建的镜像)
 ├── Makefile
+├── .env.deploy.example         # 部署目标配置示例
 └── .env.example
 ```
 
@@ -63,20 +65,41 @@ make dev-build
 
 前端支持 Vite HMR,后端使用 air 热重载,MySQL 和 Redis 数据通过 Docker Volume 持久化。
 
-## 生产部署
+## 生产部署(本地构建 + SSH 上传)
+
+镜像在本地构建,通过 SSH 传到服务器运行。服务器只需要 Docker 和 Compose 插件,不需要 Go/Node/make,也不需要拉源码;本地需要 Docker 以及 ssh/scp/gzip(Git Bash 自带)。
+
+服务器首次准备:
 
 ```bash
-cp .env.example .env.prod
-# 修改 .env.prod 中的数据库密码、Redis 密码、JWT_SECRET
-# 可用 openssl rand -hex 32 生成 JWT_SECRET
-make down
-COMPOSE_PARALLEL_LIMIT=1 make prod
+ssh root@<服务器> 'mkdir -p /srv/todo-app'
 ```
 
-生产档只暴露 web 端口(默认 `8088:80`),nginx 托管静态资源并将 `/api` 反向代理到 Go 服务;MySQL 与 Redis 仅在容器内网中访问。
+然后在服务器的 `/srv/todo-app/.env.prod` 中写入生产配置(参考 `.env.example`),至少修改数据库密码、Redis 密码和 `JWT_SECRET`(可用 `openssl rand -hex 32` 生成),并放行 `WEB_PORT_PROD`(默认 8088)。
+
+本地配置并发布:
+
+```bash
+cp .env.deploy.example .env.deploy
+# 填写 REMOTE=user@host、REMOTE_DIR=/srv/todo-app
+
+bash ./scripts/prod.sh deploy    # 构建镜像 → SSH 上传 → 远端启动(等价 make prod-deploy)
+```
+
+镜像以当前 git 提交的短 SHA 为标签,只上传 api / web 两个镜像;MySQL 和 Redis 由服务器自行拉取,数据持久化在 Docker Volume 中。
+
+日常运维:
+
+```bash
+bash ./scripts/prod.sh logs      # 远端日志
+bash ./scripts/prod.sh ps        # 容器状态
+bash ./scripts/prod.sh down      # 停止远端服务
+```
+
+更新发布重复执行 `bash ./scripts/prod.sh deploy` 即可。公网访问建议前置 Caddy / 云负载均衡提供 HTTPS;旧镜像会留在服务器上,可按需用 `docker image prune` 清理。
 
 ## 安全提示
 
-- 请勿提交 `.env` / `.env.prod`,仓库已默认忽略
+- 请勿提交 `.env` / `.env.prod` / `.env.deploy`,仓库已默认忽略
 - 上线后立即修改默认管理员密码,并使用强密码与独立 JWT 密钥
 - 公网访问建议使用 HTTPS(域名 + Caddy / 云负载均衡),并限制安全组来源 IP

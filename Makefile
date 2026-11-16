@@ -1,6 +1,4 @@
-.PHONY: dev dev-build prod prod-build down down-prod logs logs-prod ps ps-prod generate wire-gen
-
-PROD_ENV_FILE := $(if $(wildcard .env.prod),--env-file .env.prod,)
+.PHONY: dev dev-build prod prod-build prod-deploy prod-down prod-logs prod-ps down logs ps generate wire-gen
 
 dev:
 	docker compose up --build
@@ -8,29 +6,31 @@ dev:
 dev-build:
 	docker compose up -d --build
 
-prod:
-	docker compose $(PROD_ENV_FILE) -f docker-compose.prod.yml up -d --build
+prod: prod-deploy
 
 prod-build:
-	docker compose $(PROD_ENV_FILE) -f docker-compose.prod.yml build
+	bash ./scripts/prod.sh build
+
+prod-deploy:
+	bash ./scripts/prod.sh deploy
+
+prod-down:
+	bash ./scripts/prod.sh down
+
+prod-logs:
+	bash ./scripts/prod.sh logs
+
+prod-ps:
+	bash ./scripts/prod.sh ps
 
 down:
 	docker compose down
 
-down-prod:
-	docker compose $(PROD_ENV_FILE) -f docker-compose.prod.yml down
-
 logs:
 	docker compose logs -f api web db
 
-logs-prod:
-	docker compose $(PROD_ENV_FILE) -f docker-compose.prod.yml logs -f api web db
-
 ps:
 	docker compose ps
-
-ps-prod:
-	docker compose $(PROD_ENV_FILE) -f docker-compose.prod.yml ps
 
 generate: wire-gen
 

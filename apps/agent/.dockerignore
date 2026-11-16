@@ -1,0 +1,5 @@
+node_modules
+dist
+.agent-home
+.dev-check
+.env

@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM golang:1.26-alpine AS base
 ENV GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct \
     CGO_ENABLED=0

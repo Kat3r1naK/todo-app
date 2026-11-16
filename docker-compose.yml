@@ -76,6 +76,30 @@ services:
       retries: 30
       start_period: 15s
 
+  agent:
+    build:
+      context: ./apps/agent
+    restart: unless-stopped
+    environment:
+      PORT: "3001"
+      TODO_API_URL: "http://api:8080"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-deepseek}
+      MODEL_ID: ${MODEL_ID:-deepseek-v4-pro}
+      AGENT_DATA_DIR: /data
+      SETTINGS_STORE: "redis"
+      REDIS_ADDR: "cache:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: "0"
+      MODEL_SETTINGS_SECRET: ${MODEL_SETTINGS_SECRET}
+    volumes:
+      - agent_data:/data
+    ports:
+      - "${AGENT_PORT:-3001}:3001"
+    depends_on:
+      api:
+        condition: service_healthy
+
   web:
     build:
       context: ./apps/web
@@ -83,6 +107,7 @@ services:
     restart: unless-stopped
     environment:
       VITE_API_PROXY: http://api:8080
+      VITE_AGENT_PROXY: http://agent:3001
       VITE_USE_POLLING: "1"
     volumes:
       - ./apps/web:/app
@@ -92,8 +117,11 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      agent:
+        condition: service_started
 
 volumes:
   db_data:
   redis_data:
   web_node_modules:
+  agent_data:

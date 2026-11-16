@@ -134,18 +134,21 @@
       @submit="handleSubmit"
     />
     <NotesDrawer v-model="notesVisible" />
+    <AgentChatWindow v-model="agentVisible" :anchor="agentAnchor" />
     <StatsDrawer v-model="statsVisible" />
     <ArchiveDrawer v-model="archiveVisible" />
     <AdminDialog v-model="adminVisible" />
+    <AssistantMascot @open="openAssistant" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Box, Brush, Check, Notebook, Plus, Search, TrendCharts } from '@element-plus/icons-vue'
 import AdminDialog from '../components/AdminDialog.vue'
+import AgentChatWindow from '../components/AgentChatWindow.vue'
 import ArchiveDrawer from '../components/ArchiveDrawer.vue'
 import KanbanColumn from '../components/KanbanColumn.vue'
 import NotesDrawer from '../components/NotesDrawer.vue'
@@ -156,12 +159,27 @@ import { useAuthStore } from '../stores/auth'
 import { THEMES, useUiStore } from '../stores/ui'
 import type { Task, TaskPayload, TaskStatus } from '../types'
 
+const AssistantMascot = defineAsyncComponent({
+  loader: () => import('../components/AssistantMascot.vue'),
+  timeout: 10000,
+  onError(error, retry, fail, attempts) {
+    if (attempts < 3) {
+      retry()
+      return
+    }
+    console.warn('[assistant] 3D 形象加载失败', error)
+    fail()
+  },
+})
+
 const router = useRouter()
 const auth = useAuthStore()
 const board = useBoardStore()
 const ui = useUiStore()
 
 const search = ref('')
+const agentVisible = ref(false)
+const agentAnchor = ref<{ x: number; y: number } | null>(null)
 const notesVisible = ref(false)
 const statsVisible = ref(false)
 const archiveVisible = ref(false)
@@ -193,6 +211,11 @@ onMounted(async () => {
     ElMessage.error((error as Error).message)
   }
 })
+
+function openAssistant(anchor: { x: number; y: number }): void {
+  agentAnchor.value = anchor
+  agentVisible.value = true
+}
 
 function columnTasks(id: TaskStatus): Task[] {
   if (!keyword.value) return board.columns[id]

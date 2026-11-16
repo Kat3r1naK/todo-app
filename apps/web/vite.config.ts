@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 const apiTarget = process.env.VITE_API_PROXY || 'http://localhost:8080'
+const agentTarget = process.env.VITE_AGENT_PROXY || 'http://localhost:3001'
 
 export default defineConfig({
   plugins: [vue()],
@@ -14,6 +15,10 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: apiTarget,
+        changeOrigin: true,
+      },
+      '/agent': {
+        target: agentTarget,
         changeOrigin: true,
       },
     },
